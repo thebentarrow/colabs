@@ -1,15 +1,17 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
 import xgboost
+from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-
+from sklearn.metrics import  accuracy_score, mean_absolute_error, mean_squared_error, r2_score
 
 def model_performance(model, predictors, target):
     pred = model.predict(predictors)
@@ -25,6 +27,11 @@ def model_performance(model, predictors, target):
         "MAPE": mape
     }, index=[0])
 
+# NOTES:
+# Many predictors have nonlinear relationships with the target, so simple linear regression 
+# is unlikely to perform well without transformations. There are also mixed data types, 
+# skewed distributions, and missing values
+
 df_train = pd.read_csv('./kaggle/house_prices/train.csv')
 df_test = pd.read_csv('./kaggle/house_prices/test.csv')
 
@@ -34,18 +41,20 @@ x_test = df_test.drop(['Id'], axis=1)
 # Data Setup
 #----------------------------------
 ## One Hot Encode category features
-all_data = pd.concat([x_train, x_test], axis=0)
-str_cols = all_data.select_dtypes(include=['str']).columns.tolist()
-all_data_encoded = pd.get_dummies(all_data, columns=str_cols, dummy_na=True, drop_first=True)
+df_all_data = pd.concat([x_train, x_test], axis=0)
+str_cols = df_all_data.select_dtypes(include=['str']).columns.tolist()
+df_all_data_encoded = pd.get_dummies(df_all_data, columns=str_cols, dummy_na=True, drop_first=True)
+scaler = StandardScaler()
+df_all_data_scaled = pd.DataFrame(scaler.fit_transform(df_all_data_encoded), columns=df_all_data_encoded.columns)
 
 ## Null values
-cols_w_nulls = all_data_encoded.columns[all_data_encoded.isnull().any()].tolist()
+cols_w_nulls = df_all_data_scaled.columns[df_all_data_scaled.isnull().any()].tolist()
 for col in cols_w_nulls:
-    all_data_encoded[col] = all_data_encoded[col].fillna(0)
+    df_all_data_scaled[col] = df_all_data_scaled[col].fillna(0)
 
 ## Split data
-x_train = all_data_encoded[:len(x_train)]
-x_test = all_data_encoded[len(x_train):]
+x_train = df_all_data_scaled[:len(x_train)]
+x_test = df_all_data_scaled[len(x_train):]
 y_train = df_train['SalePrice']
 
 # Train models
@@ -132,7 +141,14 @@ print(f'R² Score: {r2:.4f}')
 #---------------------------------
 results = m_xgb.predict(x_test)
 
-with open('results.csv', 'w') as f:
+# x_test[x_test.select_dtypes(include=['bool']).columns] = x_test.select_dtypes(include=['bool']) * 1
+# x_test_tensor = torch.tensor(x_test.to_numpy(), dtype=torch.float32)
+# m_nn.eval()
+# with torch.no_grad():
+#     y_nn_test = m_nn(x_test_tensor)
+# results = y_nn_test.numpy()
+
+with open('results_nn.csv', 'w') as f:
     print('Id,SalePrice', file=f)
     for i, res in enumerate(results):
         print(f"{df_test.iloc[i]['Id']},{res}", file=f)
